@@ -641,8 +641,8 @@ contract NFTreceipt is ERC1155Supply, Controllable {
   mapping(uint => string) public tokenURI;
 
   constructor() ERC1155("") {
-    name = "AvatarStakeReciept";
-    symbol = "ASR";
+    name = "TGTStakeReceipt";
+    symbol = "TGTREC";
   }
 
   function mint(address _to, uint _id, uint _amount) external onlyController {

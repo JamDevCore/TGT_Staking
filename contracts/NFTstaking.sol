@@ -143,7 +143,7 @@ interface nftBase is IERC165 {
     ) external;
 
     function burn(uint256 ID) external;
-
+    function totalSupply() external view returns (uint256);
     function tokenURI(uint256 tokenId) external view returns(string memory);
 }
 
@@ -200,8 +200,9 @@ contract NFTstaking is Ownable {
     address public receiptAddress = 0xBb45f950fc8Ed38b92b5D673b7f459958d8be7Dc;
 
     uint256 public monthlyPayout = 6250000000000000000;
-
     uint256 private stamp = 60 * 60 * 24 * 30;
+    
+    bool stakingOnline = true;
 
     struct NFT {
         address staker;
@@ -212,6 +213,7 @@ contract NFTstaking is Ownable {
 
 
     function stakeNft(uint256 ID) public {
+        require(stakingOnline == true);
         nftBase nb = nftBase(nftsAddress);
         Ireciept rec = Ireciept(receiptAddress);
         require(nb.ownerOf(ID) == msg.sender);
@@ -225,7 +227,6 @@ contract NFTstaking is Ownable {
         Ireciept rec = Ireciept(receiptAddress);
         IERC20 payToken = IERC20(payoutTokenAddress);
         rec.burnFrom(msg.sender, ID, 1);
-     
         nb.transferFrom(address(this), msg.sender, ID);
         payToken.approve(address(this), calculatePay(ID));
         payToken.transferFrom(address(this), msg.sender, calculatePay(ID));
@@ -246,12 +247,19 @@ contract NFTstaking is Ownable {
         }
     }
 
+    function bulkCalculatePay(uint256[] memory IDS) public view returns(uint256) {
+        uint256 total = 0;
+            for(uint256 i = 0; i < IDS.length; i++ ) {
+            total += calculatePay(IDS[i]);
+        }
+        return total;
+    }
+
     function pushNft(address setstaker, uint256 setID, uint256 settime) internal {
         nfts[setID].staker = setstaker;
         nfts[setID].id = setID;
         nfts[setID].time = settime;
     }
-
 
     function calculatePay(uint256 ID) public view returns(uint256) {
         return (monthlyPayout * (block.timestamp - nfts[ID].time)) / stamp;
@@ -261,6 +269,16 @@ contract NFTstaking is Ownable {
         return nfts[ID].time;
     }
 
+    function depositTokens(uint256 amount) external onlyOwner {
+        IERC20 payToken = IERC20(payoutTokenAddress);
+        payToken.transferFrom(msg.sender, address(this), amount);
+    }
+
+    function withdrawFunds(uint256 amount) external onlyOwner {
+        IERC20 payToken = IERC20(payoutTokenAddress);
+        payToken.approve(address(this), amount);
+        payToken.transferFrom(address(this), owner(),  amount);
+    }
 
     function setPayoutTokenAddress(address newPayout) external onlyOwner {
         payoutTokenAddress = newPayout;
@@ -278,5 +296,18 @@ contract NFTstaking is Ownable {
     function setDailyPay(uint256 value) external onlyOwner {
         monthlyPayout = value;
     }
+    
+    function emergencyWithdrawWithoutFunds(uint256 ID) public {
+        nftBase nb = nftBase(nftsAddress);
+        Ireciept rec = Ireciept(receiptAddress);
+        rec.burnFrom(msg.sender, ID, 1);
+        nb.transferFrom(address(this), msg.sender, ID);
+    }
 
+    function setStakingOnline(bool isOn) external onlyOwner {
+        stakingOnline = isOn;
+    }
+    function setTimeStamp(uint256 tStamp) external onlyOwner {
+        stamp = tStamp;
+    }
 }

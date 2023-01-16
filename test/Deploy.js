@@ -31,9 +31,7 @@ describe('Contract deploy', function () {
     const [owner] = await ethers.getSigners();
     const TokenContract = await ethers.getContractFactory('GLDToken');
     tokenC = await TokenContract.deploy();
-    console.log(await tokenC.decimals())
     expect(parseInt(fromWei(await tokenC.balanceOf(owner.address)))).to.equal(1000000000000);
-
   });
   it('Should deploy and send me tokens and send tokens to stakingC', async function () {
     await stakingC.setReceiptAddress(receiptC.address);
@@ -42,6 +40,20 @@ describe('Contract deploy', function () {
     expect(parseInt(fromWei(await tokenC.balanceOf(stakingC.address)))).to.equal(10000);
 
 
+  });
+  it('Should deposit tokens into contract', async function () {
+    await tokenC.approve(stakingC.address, toWei('1000'))
+    const prevBalContract = await tokenC.balanceOf(stakingC.address);
+    await stakingC.depositTokens(toWei('1000'));
+    expect(fromWei(prevBalContract) - fromWei(await tokenC.balanceOf(stakingC.address)));
+
+  });
+
+  it('Should withdraw payout tokens from contract', async function () {
+    const prevBalContract = await tokenC.balanceOf(stakingC.address);
+    await stakingC.withdrawFunds(toWei('2500'));
+    const afterBal  =await tokenC.balanceOf(stakingC.address);
+    expect(fromWei(prevBalContract) -fromWei(afterBal)).to.equal(2500);
   });
   it('Should deploy and mint NFTs to my wallet', async function () {
     const [owner] = await ethers.getSigners();
@@ -57,8 +69,6 @@ describe('Contract deploy', function () {
   it('Stake an NFT', async function () {
     const [owner] = await ethers.getSigners();
     await receiptC.addController(stakingC.address);
-    console.log(await receiptC.isController(stakingC.address));
-    await console.log(await nftsC.balanceOf(owner.address));
     await nftsC.setApprovalForAll(stakingC.address, true);
     await stakingC.stakeNft(1);
     const myBal = await nftsC.balanceOf(owner.address);
@@ -68,26 +78,53 @@ describe('Contract deploy', function () {
   });
   it('Unstake an NFT', async function () {
     const [owner] = await ethers.getSigners();
-    const ogOwner = fromWei(await tokenC.balanceOf(owner.address))
-    console.log('owner', fromWei(await tokenC.balanceOf(owner.address)));
-    console.log('contract', fromWei(await tokenC.balanceOf(stakingC.address)));
-    //
     const ogContract = fromWei(await tokenC.balanceOf(stakingC.address));
-    //
-    const payBefore = await stakingC.calculatePay(1);
-    console.log('payBefore', fromWei(payBefore));
     await helpers.time.increase(2592000);
-    const pay = await stakingC.calculatePay(1);
-    console.log('payAfter', fromWei(pay));
+    expect(await stakingC.calculatePay(1)).to.equal('6250000000000000000');
     await stakingC.unstakeNft(1);
-   console.log(await stakingC.calculatePay(1))
     const myBal = await nftsC.balanceOf(owner.address);
     const contractBal = await nftsC.balanceOf(stakingC.address);
     expect(myBal.toNumber()).to.equal(20);
     expect(contractBal.toNumber()).to.equal(0);
-    const afterContract = fromWei(await tokenC.balanceOf(stakingC.address))
+    const afterContract = fromWei(await tokenC.balanceOf(stakingC.address));
     expect(parseFloat((ogContract - afterContract).toFixed(2))).to.equal(6.25);
 
+  });
+
+  it('Stake multiple NFTs', async function () {
+    const [owner] = await ethers.getSigners();
+    const myIds = [1,2,3,4,5,6,7,8,9,10];
+    await stakingC.bulkStake(myIds);
+    const myBal = await nftsC.balanceOf(owner.address);
+    const contractBal = await nftsC.balanceOf(stakingC.address);
+    const myReceiptBal = await receiptC.balanceOfBatch(myIds.map(() => owner.address), myIds);
+    myReceiptBal.forEach((r) => {
+      expect(r.toNumber()).to.equal(1);
+    });
+    expect(myBal.toNumber()).to.equal(10);
+    expect(contractBal.toNumber()).to.equal(10);
+  });
+  
+  it('Unstakes multiple NFTs, calculate pay', async function () {
+    const [owner] = await ethers.getSigners();
+    const ogContract = fromWei(await tokenC.balanceOf(stakingC.address));
+    await helpers.time.increase(2592000);
+    const pay = await stakingC.bulkCalculatePay([1,2,3,4,5,6,7,8,9,10]);
+    expect(fromWei(pay)).to.equal('62.5');
+    await stakingC.bulkUnstake([1,2,3,4,5,6,7,8,9,10]);
+    const myBal = await nftsC.balanceOf(owner.address);
+    const contractBal = await nftsC.balanceOf(stakingC.address);
+    expect(myBal.toNumber()).to.equal(20);
+    expect(contractBal.toNumber()).to.equal(0);
+    const afterContract = fromWei(await tokenC.balanceOf(stakingC.address));
+    expect(parseFloat((ogContract - afterContract).toFixed(2))).to.equal((625 * [1,2,3,4,5,6,7,8,9,10].length) /100);
+  });
+  it('can unstake an NFT in an emegergency without receiving funds', async () => {
+    const [owner] = await ethers.getSigners();
+    await stakingC.stakeNft(1);
+    await stakingC.emergencyWithdrawWithoutFunds(1);
+    const recBalance = await receiptC.balanceOf(owner.address, 1);
+    expect(recBalance.toNumber()).to.equal(0);
   });
 });
 
